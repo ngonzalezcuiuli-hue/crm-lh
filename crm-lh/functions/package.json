@@ -1,0 +1,16 @@
+{
+  "name": "functions-reciclaje-espejo",
+  "description": "Cloud Functions para clonado de leads a funnel de Reciclaje (modelo espejo)",
+  "engines": {
+    "node": "18"
+  },
+  "main": "index.js",
+  "scripts": {
+    "deploy": "firebase deploy --only functions",
+    "lint": "echo \"No lint configured\""
+  },
+  "dependencies": {
+    "firebase-admin": "^12.5.0",
+    "firebase-functions": "^4.6.0"
+  }
+}
