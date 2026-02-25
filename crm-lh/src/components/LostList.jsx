@@ -54,17 +54,17 @@ export default function LostList() {
   // ========================================================================
   // 2. MAPEO DE DATOS (Basado en tu JSON de Firebase)
   // ========================================================================
-  
+
   const normalizeText = (s) => (s ?? '').toString().trim();
 
   const resolveProvinciaLocalidad = (lead) => {
     // Prioridad: lead.zona (según tu JSON) -> luego busca en raíz
     const provincia = lead?.zona?.provincia || lead?.provincia || lead?.ubicacion?.provincia || '';
     const localidad = lead?.zona?.localidad || lead?.localidad || lead?.ubicacion?.localidad || '';
-    
-    return { 
-      provincia: normalizeText(provincia), 
-      localidad: normalizeText(localidad) 
+
+    return {
+      provincia: normalizeText(provincia),
+      localidad: normalizeText(localidad)
     };
   };
 
@@ -103,7 +103,7 @@ export default function LostList() {
     if ((m = d.match(/^(\d{4})15(\d+)$/))) d = m[1] + m[2];
     else if ((m = d.match(/^(\d{3})15(\d+)$/))) d = m[1] + m[2];
     else if ((m = d.match(/^(\d{2})15(\d+)$/))) d = m[1] + m[2];
-    
+
     const wa = '549' + d;
     return "'" + wa; // Comilla simple para forzar texto en Excel
   };
@@ -153,28 +153,53 @@ export default function LostList() {
   // 4. EXPORTACIÓN
   // ========================================================================
 
+  // Formatea un Firestore Timestamp o Date a string legible
+  const formatTimestamp = (ts) => {
+    if (!ts) return '';
+    try {
+      const date = ts?.toDate ? ts.toDate() : new Date(ts);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleDateString('es-AR');
+    } catch { return ''; }
+  };
+
+  // Resuelve la última etapa del funnel antes de ser marcado como perdido
+  const resolveUltimaEtapa = (lead) => {
+    const historial = lead?.etapaHistorial;
+    if (Array.isArray(historial) && historial.length > 0) {
+      // La penúltima entrada es la etapa real antes de "Perdido"
+      const idx = historial.length >= 2 ? historial.length - 2 : 0;
+      return normalizeText(historial[idx]?.etapa);
+    }
+    return normalizeText(lead?.etapa);
+  };
+
   const buildExportRows = (leadsArray) => {
     return leadsArray.map((lead) => {
       const { provincia, localidad } = resolveProvinciaLocalidad(lead);
       const info = resolveInfoAdicional(lead);
 
-      // Reordenamos y nombramos las columnas para que el CSV generado por LostList
-      // sea compatible con el importador de leads (CSVImporter).  Las columnas
-      // principales aparecen primero en el orden esperado por CSVImporter.  Las
-      // columnas "Motivo de pérdida" y "Fecha Ingreso" se incluyen al final como
-      // información adicional, sin interferir con el orden que requiere el importador.
+      // ── BLOQUE 1: Columnas compatibles con la plantilla de importación ──
+      // Orden exacto: NOMBRE, DNI, PROVINCIA, LOCALIDAD, CELULAR, MAIL
+      // Para copiar/pegar directo a otro CRM.
+      //
+      // ── BLOQUE 2: Datos adicionales útiles para migración CRM ──
       return {
-        'Nombre': normalizeText(lead?.nombre),
-        'Celular': formatPhoneForWhatsAppAR(lead?.celular),
-        'Provincia': provincia,
-        'Localidad': localidad,
+        'NOMBRE': normalizeText(lead?.nombre),
+        'DNI': normalizeText(lead?.dni),
+        'PROVINCIA': provincia,
+        'LOCALIDAD': localidad,
+        'CELULAR': formatPhoneForWhatsAppAR(lead?.celular),
+        'MAIL': normalizeText(lead?.mail),
         'Cant. Integrantes': info.cantidadIntegrantes,
         'Edades': info.edades,
         'CUIT Empleador': info.cuitEmpleador,
         'Obra Social': info.obraSocial,
         'Observaciones': info.observaciones,
-        'Motivo de pérdida': normalizeText(lead?.razonPerdida),
+        'Motivo de Pérdida': normalizeText(lead?.razonPerdida),
         'Fecha Ingreso': normalizeText(lead?.fechaIngreso),
+        'Etapa Alcanzada': resolveUltimaEtapa(lead),
+        'Fecha Pérdida': formatTimestamp(lead?.lastUpdatedAt),
       };
     });
   };
@@ -199,8 +224,8 @@ export default function LostList() {
     // Merge con rawLostLeads para asegurar integridad de datos ocultos
     const mapRaw = new Map((rawLostLeads || []).map((l) => [l?.id, l]));
     const merged = filteredLeads.map((l) => {
-        const raw = mapRaw.get(l.id) || {};
-        return { ...raw, ...l }; 
+      const raw = mapRaw.get(l.id) || {};
+      return { ...raw, ...l };
     });
 
     downloadCSV(buildExportRows(merged), 'leads_perdidos_filtrados');
@@ -237,28 +262,28 @@ export default function LostList() {
 
   return (
     <div className="p-6 min-h-screen bg-gray-50">
-      
+
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
           <h2 className="text-2xl font-extrabold text-gray-900">Leads Perdidos</h2>
           <div className="flex gap-2">
-             <button onClick={handleExportSelected} disabled={selectedLeads.size === 0} className="px-4 py-2 bg-blue-700 text-white font-bold rounded shadow hover:bg-blue-800 disabled:bg-gray-300 transition-all">
-               Exportar Sel. ({selectedLeads.size})
-             </button>
-             <button onClick={handleExportFiltered} disabled={filteredLeads.length === 0} className="px-4 py-2 bg-emerald-700 text-white font-bold rounded shadow hover:bg-emerald-800 disabled:bg-gray-300 transition-all">
-               Exportar Reporte ({filteredLeads.length})
-             </button>
+            <button onClick={handleExportSelected} disabled={selectedLeads.size === 0} className="px-4 py-2 bg-blue-700 text-white font-bold rounded shadow hover:bg-blue-800 disabled:bg-gray-300 transition-all">
+              Exportar Sel. ({selectedLeads.size})
+            </button>
+            <button onClick={handleExportFiltered} disabled={filteredLeads.length === 0} className="px-4 py-2 bg-emerald-700 text-white font-bold rounded shadow hover:bg-emerald-800 disabled:bg-gray-300 transition-all">
+              Exportar Reporte ({filteredLeads.length})
+            </button>
           </div>
         </div>
 
         {/* Filtros High Contrast */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-100 rounded-lg border border-gray-300">
-          
+
           {/* Filtro Mes */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold text-gray-700 uppercase">📅 Mes de Ingreso</label>
-            <select 
+            <select
               className="w-full border border-gray-400 rounded-lg px-3 py-2 text-gray-900 font-bold bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
@@ -273,7 +298,7 @@ export default function LostList() {
           {/* Filtro Motivo */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold text-gray-700 uppercase">🔍 Motivo</label>
-            <select 
+            <select
               className="w-full border border-gray-400 rounded-lg px-3 py-2 text-gray-900 font-bold bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               value={reasonFilter}
               onChange={(e) => setReasonFilter(e.target.value)}
@@ -282,12 +307,12 @@ export default function LostList() {
               {allReasons.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
-          
+
           <div className="flex items-end justify-end pb-2">
-             <span className="text-sm font-bold text-gray-600">Viendo <span className="text-blue-700 text-lg">{filteredLeads.length}</span> leads</span>
+            <span className="text-sm font-bold text-gray-600">Viendo <span className="text-blue-700 text-lg">{filteredLeads.length}</span> leads</span>
           </div>
         </div>
-        
+
         {exportMessage.text && (
           <div className={`mt-4 p-3 rounded font-bold text-sm border ${exportMessage.type === 'success' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
             {exportMessage.text}
@@ -302,8 +327,8 @@ export default function LostList() {
             <thead className="bg-gray-200">
               <tr>
                 <th className="px-4 py-4 w-10">
-                  <input type="checkbox" className="w-4 h-4 text-blue-600 rounded border-gray-400 focus:ring-blue-500" 
-                    onChange={(e) => e.target.checked ? selectAllFiltered() : clearSelection()} 
+                  <input type="checkbox" className="w-4 h-4 text-blue-600 rounded border-gray-400 focus:ring-blue-500"
+                    onChange={(e) => e.target.checked ? selectAllFiltered() : clearSelection()}
                     checked={filteredLeads.length > 0 && selectedLeads.size === filteredLeads.length}
                   />
                 </th>
@@ -318,11 +343,11 @@ export default function LostList() {
                 const info = resolveInfoAdicional(lead);
                 const { provincia, localidad } = resolveProvinciaLocalidad(lead);
                 const isSelected = selectedLeads.has(lead.id);
-                
+
                 return (
                   <tr key={lead.id} className={`hover:bg-blue-50 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
                     <td className="px-4 py-4">
-                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(lead.id)} className="w-4 h-4 text-blue-600 rounded border-gray-400 focus:ring-blue-500"/>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(lead.id)} className="w-4 h-4 text-blue-600 rounded border-gray-400 focus:ring-blue-500" />
                     </td>
                     <td className="px-4 py-4">
                       <div className="font-bold text-gray-900">{lead.nombre}</div>
