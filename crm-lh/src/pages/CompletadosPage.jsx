@@ -6,6 +6,7 @@ import Spinner from '../components/Spinner';
 import CompletedLeadCard from '../components/CompletedLeadCard';
 import LeadModal from '../components/LeadModal';
 import { updateLead } from '../services/leadsService';
+import { buildNexoExportRows, downloadCSV } from '../utils/exportLeads';
 
 export default function CompletadosPage() {
   const { user } = useAuthContext() || {};
@@ -30,9 +31,15 @@ export default function CompletadosPage() {
     }
   };
 
+  const handleExport = () => {
+    if (!completedLeads || completedLeads.length === 0) return;
+    const rows = buildNexoExportRows(completedLeads);
+    downloadCSV(rows, 'leads_completados_nexo');
+  };
+
   return (
     <>
-      <Topbar />
+      <Topbar onExport={handleExport} exportCount={completedLeads.length} />
       <div className="p-6">
         <h1 className="text-3xl font-bold mb-6">Leads Completados</h1>
         {loading ? (

@@ -5,7 +5,7 @@ import { Search } from 'lucide-react';
 // Se usa una ruta absoluta desde la raíz del proyecto.
 import logo from '/src/assets/logo.png';
 
-const Topbar = ({ onNew, searchTerm, onSearchChange }) => {
+const Topbar = ({ onNew, searchTerm, onSearchChange, onExport, exportCount }) => {
   const [searchVisible, setSearchVisible] = useState(false);
 
   return (
@@ -58,6 +58,16 @@ const Topbar = ({ onNew, searchTerm, onSearchChange }) => {
                 aria-label="Buscar"
               >
                 <Search className="h-5 w-5" />
+              </button>
+            )}
+            {onExport && (
+              <button
+                onClick={onExport}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 md:px-4 rounded-lg transition duration-300 text-sm md:text-base whitespace-nowrap"
+                title={`Exportar ${exportCount || 0} leads para Nexo CRM`}
+              >
+                <span className="hidden sm:inline">📥 Exportar ({exportCount || 0})</span>
+                <span className="sm:hidden">📥</span>
               </button>
             )}
             <button

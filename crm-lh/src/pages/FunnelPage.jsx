@@ -7,6 +7,7 @@ import Spinner from "../components/Spinner";
 import { useAuthContext } from '../hooks/useAuth.jsx';
 import useLeads from "../hooks/useLeads";
 import { createLead, updateLead, markLeadLost, startOnboarding, moveLeadToStage } from "../services/leadsService";
+import { buildNexoExportRows, downloadCSV } from "../utils/exportLeads";
 
 const RAZONES_DE_PERDIDA = ["Por precio", "Preexistencia", "Embarazo", "Por edad", "Dato error", "Imposible contactar", "Cotizado sin respuesta"];
 
@@ -65,9 +66,15 @@ export default function FunnelPage() {
     }
   };
 
+  const handleExportLeads = () => {
+    if (!leads || leads.length === 0) return;
+    const rows = buildNexoExportRows(leads);
+    downloadCSV(rows, 'leads_funnel_nexo');
+  };
+
   return (
     <>
-      <Topbar onNew={handleNewLead} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+      <Topbar onNew={handleNewLead} searchTerm={searchTerm} onSearchChange={setSearchTerm} onExport={handleExportLeads} exportCount={leads.length} />
       <div className="flex-1 overflow-y-auto bg-gray-50">
         {leadsLoading ? <Spinner /> : (
           <KanbanBoard

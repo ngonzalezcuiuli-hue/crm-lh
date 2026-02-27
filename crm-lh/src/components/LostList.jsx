@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
 import { useLostLeads } from '../hooks/useLostLeads';
 import Spinner from './Spinner';
+import { buildNexoExportRows, downloadCSV } from '../utils/exportLeads';
 
 export default function LostList() {
   const { lostLeads, rawLostLeads, loading } = useLostLeads();
@@ -150,85 +151,20 @@ export default function LostList() {
   }, [lostLeads]);
 
   // ========================================================================
-  // 4. EXPORTACIÓN
+  // 4. EXPORTACIÓN (usando utilidad centralizada)
   // ========================================================================
-
-  // Formatea un Firestore Timestamp o Date a string legible
-  const formatTimestamp = (ts) => {
-    if (!ts) return '';
-    try {
-      const date = ts?.toDate ? ts.toDate() : new Date(ts);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleDateString('es-AR');
-    } catch { return ''; }
-  };
-
-  // Resuelve la última etapa del funnel antes de ser marcado como perdido
-  const resolveUltimaEtapa = (lead) => {
-    const historial = lead?.etapaHistorial;
-    if (Array.isArray(historial) && historial.length > 0) {
-      // La penúltima entrada es la etapa real antes de "Perdido"
-      const idx = historial.length >= 2 ? historial.length - 2 : 0;
-      return normalizeText(historial[idx]?.etapa);
-    }
-    return normalizeText(lead?.etapa);
-  };
-
-  const buildExportRows = (leadsArray) => {
-    return leadsArray.map((lead) => {
-      const { provincia, localidad } = resolveProvinciaLocalidad(lead);
-      const info = resolveInfoAdicional(lead);
-
-      // ── BLOQUE 1: Columnas compatibles con la plantilla de importación ──
-      // Orden exacto: NOMBRE, DNI, PROVINCIA, LOCALIDAD, CELULAR, MAIL
-      // Para copiar/pegar directo a otro CRM.
-      //
-      // ── BLOQUE 2: Datos adicionales útiles para migración CRM ──
-      return {
-        'NOMBRE': normalizeText(lead?.nombre),
-        'DNI': normalizeText(lead?.dni),
-        'PROVINCIA': provincia,
-        'LOCALIDAD': localidad,
-        'CELULAR': formatPhoneForWhatsAppAR(lead?.celular),
-        'MAIL': normalizeText(lead?.mail),
-        'Cant. Integrantes': info.cantidadIntegrantes,
-        'Edades': info.edades,
-        'CUIT Empleador': info.cuitEmpleador,
-        'Obra Social': info.obraSocial,
-        'Observaciones': info.observaciones,
-        'Motivo de Pérdida': normalizeText(lead?.razonPerdida),
-        'Fecha Ingreso': normalizeText(lead?.fechaIngreso),
-        'Etapa Alcanzada': resolveUltimaEtapa(lead),
-        'Fecha Pérdida': formatTimestamp(lead?.lastUpdatedAt),
-      };
-    });
-  };
-
-  const downloadCSV = (rows, filenameBase) => {
-    const csv = Papa.unparse(rows);
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const fecha = new Date().toISOString().slice(0, 10);
-    link.href = url;
-    link.download = `${filenameBase}_${fecha}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const handleExportFiltered = () => {
     setExportMessage({ type: '', text: '' });
     if (!filteredLeads || filteredLeads.length === 0) return;
 
-    // Merge con rawLostLeads para asegurar integridad de datos ocultos
     const mapRaw = new Map((rawLostLeads || []).map((l) => [l?.id, l]));
     const merged = filteredLeads.map((l) => {
       const raw = mapRaw.get(l.id) || {};
       return { ...raw, ...l };
     });
 
-    downloadCSV(buildExportRows(merged), 'leads_perdidos_filtrados');
+    downloadCSV(buildNexoExportRows(merged), 'leads_perdidos_filtrados');
     setExportMessage({ type: 'success', text: `Exportados ${merged.length} leads filtrados.` });
   };
 
@@ -238,7 +174,7 @@ export default function LostList() {
     const toExport = Array.from(selectedLeads).map((id) => mapRaw.get(id)).filter(Boolean);
 
     if (toExport.length === 0) return;
-    downloadCSV(buildExportRows(toExport), 'leads_perdidos_seleccion');
+    downloadCSV(buildNexoExportRows(toExport), 'leads_perdidos_seleccion');
     setExportMessage({ type: 'success', text: `Exportados ${toExport.length} leads.` });
   };
 
