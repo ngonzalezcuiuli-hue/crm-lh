@@ -2,16 +2,29 @@
 import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
 import { useLostLeads } from '../hooks/useLostLeads';
+import useAuth from '../hooks/useAuth.jsx';
 import Spinner from './Spinner';
+import WhatsAppModal from './WhatsAppModal';
 import { buildNexoExportRows, downloadCSV } from '../utils/exportLeads';
+import { reactivateLead } from '../services/leadsService';
 
 export default function LostList() {
   const { lostLeads, rawLostLeads, loading } = useLostLeads();
+  const { user } = useAuth();
 
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [reasonFilter, setReasonFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [exportMessage, setExportMessage] = useState({ type: '', text: '' });
+
+  // --- Estado para WhatsApp Modal (Recontacto) ---
+  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
+  const [whatsAppLead, setWhatsAppLead] = useState(null);
+
+  // --- Estado para Reactivación ---
+  const [reactivatingId, setReactivatingId] = useState(null);
+  const [confirmReactivateId, setConfirmReactivateId] = useState(null);
+  const [reactivateMessage, setReactivateMessage] = useState({ type: '', text: '' });
 
   // ========================================================================
   // 1. MANEJO DE FECHAS (Solución "Invalid Date")
@@ -59,7 +72,6 @@ export default function LostList() {
   const normalizeText = (s) => (s ?? '').toString().trim();
 
   const resolveProvinciaLocalidad = (lead) => {
-    // Prioridad: lead.zona (según tu JSON) -> luego busca en raíz
     const provincia = lead?.zona?.provincia || lead?.provincia || lead?.ubicacion?.provincia || '';
     const localidad = lead?.zona?.localidad || lead?.localidad || lead?.ubicacion?.localidad || '';
 
@@ -70,15 +82,11 @@ export default function LostList() {
   };
 
   const resolveInfoAdicional = (lead) => {
-    // Tu estructura JSON pone estos datos en 'infoAdicional'
     const info = lead?.infoAdicional || {};
-    const members = lead?.cotizacionMiembros || []; // Array con datos de edades
+    const members = lead?.cotizacionMiembros || [];
 
-    // Lógica inteligente para Edades:
-    // Si infoAdicional.edades está vacío, buscamos en el array de miembros (cotizacionMiembros)
     let edadesFinal = normalizeText(info.edades);
     if (!edadesFinal && Array.isArray(members) && members.length > 0) {
-      // Extrae "36 a 40 años", etc. y los une con comas
       edadesFinal = members
         .map(m => m.ageGroup)
         .filter(Boolean)
@@ -87,7 +95,7 @@ export default function LostList() {
 
     return {
       cantidadIntegrantes: normalizeText(info.cantidadIntegrantes ?? lead?.cantidadIntegrantes),
-      edades: edadesFinal, // Usa la lógica inteligente
+      edades: edadesFinal,
       cuitEmpleador: normalizeText(info.cuitEmpleador ?? info.cuit ?? lead?.cuitEmpleador),
       obraSocial: normalizeText(info.obraSocial ?? info.os ?? lead?.obraSocial),
       observaciones: normalizeText(info.observaciones ?? lead?.observaciones),
@@ -99,7 +107,6 @@ export default function LostList() {
     let d = String(input).replace(/\D/g, '');
     if (d.startsWith('54')) d = d.slice(2);
     if (d.startsWith('0')) d = d.slice(1);
-    // Heurística para quitar el 15 después del código de área
     let m;
     if ((m = d.match(/^(\d{4})15(\d+)$/))) d = m[1] + m[2];
     else if ((m = d.match(/^(\d{3})15(\d+)$/))) d = m[1] + m[2];
@@ -119,7 +126,7 @@ export default function LostList() {
     // Filtro Mes
     if (monthFilter) {
       result = result.filter((l) => {
-        const key = getYearMonthKey(l?.fechaIngreso); // Usa el parser corregido
+        const key = getYearMonthKey(l?.fechaIngreso);
         return key === monthFilter;
       });
     }
@@ -142,7 +149,7 @@ export default function LostList() {
       const key = getYearMonthKey(l?.fechaIngreso);
       if (key) set.add(key);
     });
-    return Array.from(set).sort().reverse(); // Más reciente arriba
+    return Array.from(set).sort().reverse();
   }, [lostLeads]);
 
   const allReasons = useMemo(() => {
@@ -176,6 +183,37 @@ export default function LostList() {
     if (toExport.length === 0) return;
     downloadCSV(buildNexoExportRows(toExport), 'leads_perdidos_seleccion');
     setExportMessage({ type: 'success', text: `Exportados ${toExport.length} leads.` });
+  };
+
+  // ========================================================================
+  // 5. RECONTACTO & REACTIVACIÓN
+  // ========================================================================
+
+  const handleRecontact = (lead) => {
+    setWhatsAppLead(lead);
+    setIsWhatsAppOpen(true);
+  };
+
+  const handleReactivate = async (leadId, leadName) => {
+    if (!user) return;
+    setReactivatingId(leadId);
+    setReactivateMessage({ type: '', text: '' });
+    try {
+      await reactivateLead({ userId: user.uid, leadId });
+      setReactivateMessage({ type: 'success', text: `✅ ${leadName} fue reactivado al Funnel de Ventas.` });
+      setConfirmReactivateId(null);
+      // Limpiar selección si estaba seleccionado
+      setSelectedLeads(prev => {
+        const next = new Set(prev);
+        next.delete(leadId);
+        return next;
+      });
+    } catch (error) {
+      console.error("Error al reactivar:", error);
+      setReactivateMessage({ type: 'error', text: `Error al reactivar el lead. Intenta de nuevo.` });
+    } finally {
+      setReactivatingId(null);
+    }
   };
 
   // Helpers UI
@@ -254,6 +292,12 @@ export default function LostList() {
             {exportMessage.text}
           </div>
         )}
+
+        {reactivateMessage.text && (
+          <div className={`mt-4 p-3 rounded font-bold text-sm border animate-pulse ${reactivateMessage.type === 'success' ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+            {reactivateMessage.text}
+          </div>
+        )}
       </div>
 
       {/* Tabla */}
@@ -272,6 +316,7 @@ export default function LostList() {
                 <th className="px-4 py-3 text-xs font-extrabold text-gray-700 uppercase">Motivo / Fecha</th>
                 <th className="px-4 py-3 text-xs font-extrabold text-gray-700 uppercase">Info Extra</th>
                 <th className="px-4 py-3 text-xs font-extrabold text-gray-700 uppercase">Obs.</th>
+                <th className="px-4 py-3 text-xs font-extrabold text-gray-700 uppercase text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
@@ -279,6 +324,8 @@ export default function LostList() {
                 const info = resolveInfoAdicional(lead);
                 const { provincia, localidad } = resolveProvinciaLocalidad(lead);
                 const isSelected = selectedLeads.has(lead.id);
+                const isConfirming = confirmReactivateId === lead.id;
+                const isReactivating = reactivatingId === lead.id;
 
                 return (
                   <tr key={lead.id} className={`hover:bg-blue-50 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
@@ -306,6 +353,63 @@ export default function LostList() {
                     <td className="px-4 py-4 text-xs text-gray-500 italic max-w-xs truncate">
                       {info.observaciones || '-'}
                     </td>
+
+                    {/* === COLUMNA DE ACCIONES === */}
+                    <td className="px-4 py-4">
+                      <div className="flex flex-col items-center gap-2">
+                        {isConfirming ? (
+                          /* Confirmación inline de reactivación */
+                          <div className="flex flex-col items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg p-2 animate-fade-in">
+                            <span className="text-xs font-bold text-blue-800 text-center">¿Reactivar al Funnel?</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => handleReactivate(lead.id, lead.nombre)}
+                                disabled={isReactivating}
+                                className="px-2.5 py-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded shadow-sm transition-all disabled:opacity-50"
+                              >
+                                {isReactivating ? '...' : '✓ Sí'}
+                              </button>
+                              <button
+                                onClick={() => setConfirmReactivateId(null)}
+                                disabled={isReactivating}
+                                className="px-2.5 py-1 text-xs font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 rounded transition-all"
+                              >
+                                ✕ No
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Botones de acción normales */
+                          <>
+                            {/* Botón Recontactar vía WhatsApp */}
+                            <button
+                              onClick={() => handleRecontact(lead)}
+                              disabled={!lead.celular || lead.celular === 'Sin celular'}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed w-full justify-center"
+                              title="Enviar mensaje de recontacto por WhatsApp"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.891-9.892-5.452 0-9.887 4.434-9.889 9.886-.001 2.269.655 4.398 1.919 6.166l-1.138 4.162 4.273-1.12z" />
+                              </svg>
+                              Recontactar
+                            </button>
+
+                            {/* Botón Reactivar al Funnel */}
+                            <button
+                              onClick={() => setConfirmReactivateId(lead.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition-all w-full justify-center"
+                              title="Reactivar este lead al Funnel de Ventas"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1 4 1 10 7 10"></polyline>
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                              </svg>
+                              Reactivar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -314,6 +418,15 @@ export default function LostList() {
         </div>
         {filteredLeads.length === 0 && <div className="p-10 text-center text-gray-500 font-bold bg-gray-50">No hay leads que coincidan con los filtros.</div>}
       </div>
+
+      {/* Modal de WhatsApp para Recontacto */}
+      <WhatsAppModal
+        open={isWhatsAppOpen}
+        onClose={() => { setIsWhatsAppOpen(false); setWhatsAppLead(null); }}
+        lead={whatsAppLead}
+        userName={user?.displayName}
+        variant="recontacto"
+      />
     </div>
   );
 }

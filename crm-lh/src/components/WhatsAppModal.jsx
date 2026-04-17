@@ -13,6 +13,11 @@ function getDefaultMessage(lead, userName, variant = 'primary') {
     const currentUserName = userName || 'tu asesor';
     const nombreProspecto = lead.nombre || '';
 
+    // Mensaje de recontacto para leads perdidos
+    if (variant === 'recontacto') {
+        return `Hola ${nombreProspecto}, como estas? \u{1F44B}\n\nSoy ${currentUserName} de Swiss Medical \u{1F3E5}\n\nHace un tiempo habiamos conversado sobre tu cobertura medica y queria saber si seguis buscando un plan.\n\nTenemos novedades y descuentos que podrian interesarte \u{1F60A}\n\nTe gustaria que retomemos la conversacion?`;
+    }
+
     if (lead.etapa === 'Primer Contacto') {
         if (variant === 'primary') {
             return `Hola ${nombreProspecto}, buen dia \u{1F44B}\n\nSoy ${currentUserName} de Swiss Medical \u{1F3E5}\n\nGracias por tu consulta en nuestra web. Me encantaria ayudarte a encontrar el plan ideal para vos y responder cualquier duda que tengas.\n\nQueres que sigamos conversando por aca \u{1F4F1} o preferis que te llame \u{1F4DE}? \u{1F60A}`;

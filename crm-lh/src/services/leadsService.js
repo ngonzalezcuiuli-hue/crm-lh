@@ -38,14 +38,14 @@ export async function getLeads(userId) {
 
 export async function createLead(userId, leadData) {
   const ref = doc(collection(db, `users/${userId}/leads`));
-  
+
   const newLeadPayload = {
     ...leadData,
     estado: "Funnel",
     createdAt: serverTimestamp(),
     lastUpdatedAt: serverTimestamp(),
     cotizacionMiembros: [
-        { id: Date.now(), ageGroup: "Hasta 35 años", discount: "0%" }
+      { id: Date.now(), ageGroup: "Hasta 35 años", discount: "0%" }
     ],
     etapaHistorial: [
       {
@@ -55,10 +55,10 @@ export async function createLead(userId, leadData) {
       }
     ],
     infoProceso: {
-        idOnboarding: "",
-        precarga: "Pendiente",
-        mesProduccion: "",
-        numeroPrecarga: ""
+      idOnboarding: "",
+      precarga: "Pendiente",
+      mesProduccion: "",
+      numeroPrecarga: ""
     },
     // Nivel de interés del prospecto en seguimiento (0 = apagado, 1 = medio, 2 = alto)
     interestLevel: 0,
@@ -69,76 +69,112 @@ export async function createLead(userId, leadData) {
 }
 
 export async function updateLead(userId, leadId, data) {
-    const ref = doc(db, `users/${userId}/leads/${leadId}`);
-    await updateDoc(ref, { ...data, lastUpdatedAt: serverTimestamp() });
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+  await updateDoc(ref, { ...data, lastUpdatedAt: serverTimestamp() });
 }
 
 export async function startOnboarding({ userId, leadId }) {
-    const ref = doc(db, `users/${userId}/leads/${leadId}`);
-    await updateDoc(ref, { 
-        estado: "Onboarding",
-        lastUpdatedAt: serverTimestamp() 
-    });
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+  await updateDoc(ref, {
+    estado: "Onboarding",
+    lastUpdatedAt: serverTimestamp()
+  });
 }
 
 export async function moveLeadToStage({ userId, leadId, newEtapa }) {
-    const leadRef = doc(db, `users/${userId}/leads/${leadId}`);
-    try {
-        const leadSnap = await getDoc(leadRef);
-        if (!leadSnap.exists()) throw new Error("El lead no existe.");
-        const leadData = leadSnap.data();
-        const oldHistorial = leadData.etapaHistorial || [];
-        
-        const ultimoIndice = oldHistorial.length - 1;
-        if (ultimoIndice >= 0) {
-            oldHistorial[ultimoIndice].fechaSalida = new Date();
-        }
-        
-        const nuevoHistorial = [
-            ...oldHistorial,
-            {
-                etapa: newEtapa,
-                fechaEntrada: new Date(),
-                fechaSalida: null
-            }
-        ];
+  const leadRef = doc(db, `users/${userId}/leads/${leadId}`);
+  try {
+    const leadSnap = await getDoc(leadRef);
+    if (!leadSnap.exists()) throw new Error("El lead no existe.");
+    const leadData = leadSnap.data();
+    const oldHistorial = leadData.etapaHistorial || [];
 
-        await updateDoc(leadRef, {
-            etapa: newEtapa,
-            etapaHistorial: nuevoHistorial,
-            lastUpdatedAt: serverTimestamp()
-        });
-    } catch (error) {
-        console.error("Error al mover el lead:", error);
+    const ultimoIndice = oldHistorial.length - 1;
+    if (ultimoIndice >= 0) {
+      oldHistorial[ultimoIndice].fechaSalida = new Date();
     }
+
+    const nuevoHistorial = [
+      ...oldHistorial,
+      {
+        etapa: newEtapa,
+        fechaEntrada: new Date(),
+        fechaSalida: null
+      }
+    ];
+
+    await updateDoc(leadRef, {
+      etapa: newEtapa,
+      etapaHistorial: nuevoHistorial,
+      lastUpdatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error al mover el lead:", error);
+  }
 }
 
 export async function markLeadLost({ userId, leadId, reason }) {
-    const ref = doc(db, `users/${userId}/leads/${leadId}`);
-    await updateDoc(ref, { 
-        estado: "Perdido", 
-        razonPerdida: reason, 
-        lastUpdatedAt: serverTimestamp() 
-    });
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+  await updateDoc(ref, {
+    estado: "Perdido",
+    razonPerdida: reason,
+    lastUpdatedAt: serverTimestamp()
+  });
 }
 
 export async function markAsCompleted({ userId, leadId, leadData }) {
-    const ref = doc(db, `users/${userId}/leads/${leadId}`);
-    const currentMonth = new Date().toISOString().slice(0, 7);
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+  const currentMonth = new Date().toISOString().slice(0, 7);
 
-    const updatedProcesoInfo = {
-        ...leadData.infoProceso,
-        mesProduccion: leadData.infoProceso.mesProduccion || currentMonth
-    };
+  const updatedProcesoInfo = {
+    ...leadData.infoProceso,
+    mesProduccion: leadData.infoProceso.mesProduccion || currentMonth
+  };
 
-    await updateDoc(ref, { 
-        estado: "Completado", 
-        infoProceso: updatedProcesoInfo,
-        lastUpdatedAt: serverTimestamp() 
-    });
+  await updateDoc(ref, {
+    estado: "Completado",
+    infoProceso: updatedProcesoInfo,
+    lastUpdatedAt: serverTimestamp()
+  });
 }
 
 export async function deleteLead(userId, leadId) {
-    const ref = doc(db, `users/${userId}/leads/${leadId}`);
-    await deleteDoc(ref);
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+  await deleteDoc(ref);
+}
+
+/**
+ * Reactiva un lead perdido: lo mueve de vuelta al Funnel activo
+ * conservando todos sus datos originales.
+ */
+export async function reactivateLead({ userId, leadId }) {
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+  const leadSnap = await getDoc(ref);
+  if (!leadSnap.exists()) throw new Error("El lead no existe.");
+
+  const leadData = leadSnap.data();
+  const oldHistorial = leadData.etapaHistorial || [];
+
+  // Cerrar la etapa anterior si existe
+  const ultimoIndice = oldHistorial.length - 1;
+  if (ultimoIndice >= 0 && !oldHistorial[ultimoIndice].fechaSalida) {
+    oldHistorial[ultimoIndice].fechaSalida = new Date();
+  }
+
+  const nuevoHistorial = [
+    ...oldHistorial,
+    {
+      etapa: "Primer Contacto",
+      fechaEntrada: new Date(),
+      fechaSalida: null
+    }
+  ];
+
+  await updateDoc(ref, {
+    estado: "Funnel",
+    etapa: "Primer Contacto",
+    razonPerdida: "",
+    etapaHistorial: nuevoHistorial,
+    lastUpdatedAt: serverTimestamp()
+  });
 }
