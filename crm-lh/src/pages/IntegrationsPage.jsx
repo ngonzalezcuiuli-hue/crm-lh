@@ -3,6 +3,7 @@ import { useAuthContext } from '../hooks/useAuth.jsx';
 import { db } from '../services/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Spinner from '../components/Spinner';
+import WhatsAppNumberModal from '../components/WhatsAppNumberModal';
 
 export default function IntegrationsPage() {
   const { user } = useAuthContext();
@@ -10,6 +11,7 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -46,10 +48,24 @@ export default function IntegrationsPage() {
 
   return (
     <div className="p-4 md:p-8">
-      <div className="max-w-2xl mx-auto bg-white p-6 rounded-lg shadow-md border">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Integraciones</h1>
-        <p className="text-gray-600 mb-6">Conecta tu CRM con otras aplicaciones para automatizar tus tareas.</p>
-        <div className="border-t pt-6">
+      <div className="max-w-2xl mx-auto space-y-6">
+        {/* Sección WhatsApp */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">WhatsApp</h1>
+          <p className="text-gray-600 mb-6">Configura tu número de WhatsApp para enviar mensajes automáticos.</p>
+          <button
+            onClick={() => setShowWhatsAppModal(true)}
+            className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            📱 Configurar Número WhatsApp
+          </button>
+          <p className="text-xs text-gray-500 mt-3">
+            Guarda tu número para usar la automatización de mensajes en el CRM.
+          </p>
+        </div>
+
+        {/* Sección Make.com */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
           <h2 className="text-lg font-semibold text-gray-700">Google Contacts via Make.com</h2>
           <p className="text-sm text-gray-500 mt-1 mb-4">Pega la URL de tu webhook de Make.com para guardar leads directamente en tus contactos de Google.</p>
           <form onSubmit={handleSave}>
@@ -66,6 +82,12 @@ export default function IntegrationsPage() {
           </form>
         </div>
       </div>
+
+      {/* Modal WhatsApp */}
+      <WhatsAppNumberModal
+        open={showWhatsAppModal}
+        onClose={() => setShowWhatsAppModal(false)}
+      />
     </div>
   );
 }

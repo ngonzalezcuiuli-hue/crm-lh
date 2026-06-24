@@ -1,0 +1,4 @@
+# Firebase service account credentials (admin keys, never commit)
+**/firebase-key.json
+**/*firebase-adminsdk*.json
+**/crm-lh-e27c4-*.json

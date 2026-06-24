@@ -4,8 +4,10 @@ import LeadModal from "../components/LeadModal";
 import LossReasonModal from "../components/LossReasonModal";
 import Topbar from "../components/Topbar";
 import Spinner from "../components/Spinner";
+import StandBySection from "../components/StandBySection";
 import { useAuthContext } from '../hooks/useAuth.jsx';
 import useLeads from "../hooks/useLeads";
+import useStandByLeads from "../hooks/useStandByLeads";
 import { createLead, updateLead, markLeadLost, startOnboarding, moveLeadToStage } from "../services/leadsService";
 import { buildNexoExportRows, downloadCSV } from "../utils/exportLeads";
 
@@ -15,6 +17,7 @@ export default function FunnelPage() {
   const { user } = useAuthContext() || {};
   // El hook useLeads ahora se ejecutará de forma segura solo cuando user.uid exista
   const { leads, loading: leadsLoading } = useLeads(user?.uid);
+  const { leads: standByLeads, loading: standByLoading } = useStandByLeads(user?.uid);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isLeadModalOpen, setLeadModalOpen] = useState(false);
@@ -23,19 +26,26 @@ export default function FunnelPage() {
   const [losingLead, setLosingLead] = useState(null);
 
   const boardData = useMemo(() => {
+    // Obtener IDs de leads en Stand By para excluirlos del Kanban
+    const standByIds = new Set(standByLeads.map(l => l.id));
+
+    // Filtrar leads: excluir los que están en Stand By
     const filteredLeads = leads.filter(lead => {
+      if (standByIds.has(lead.id)) return false;
+
       const searchTermLower = searchTerm.toLowerCase();
       const nombreLower = lead.nombre?.toLowerCase() || '';
       const tramiteLower = lead.numeroTramite?.toLowerCase() || '';
       return nombreLower.includes(searchTermLower) || tramiteLower.includes(searchTermLower);
     });
+
     return filteredLeads.reduce((acc, lead) => {
       const stage = lead.etapa;
       if (!acc[stage]) acc[stage] = [];
       acc[stage].push(lead);
       return acc;
     }, {});
-  }, [leads, searchTerm]);
+  }, [leads, standByLeads, searchTerm]);
 
   const handleDragEnd = (result) => {
     const { destination, source, draggableId } = result;
@@ -75,17 +85,27 @@ export default function FunnelPage() {
   return (
     <>
       <Topbar onNew={handleNewLead} searchTerm={searchTerm} onSearchChange={setSearchTerm} onExport={handleExportLeads} exportCount={leads.length} />
-      <div className="flex-1 overflow-y-auto bg-gray-50">
-        {leadsLoading ? <Spinner /> : (
-          <KanbanBoard
-            data={boardData}
-            onDragEnd={handleDragEnd}
-            onEdit={handleEditLead}
-            onMarkLost={handleMarkLost}
-            onStartOnboarding={handleStartOnboarding}
-            userName={user?.displayName}
-            makeWebhookUrl={user?.makeWebhookUrl}
-          />
+      <div className="flex-1 overflow-y-auto bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 sm:p-6">
+        {leadsLoading || standByLoading ? (
+          <Spinner />
+        ) : (
+          <>
+            {/* Kanban Board */}
+            <KanbanBoard
+              data={boardData}
+              onDragEnd={handleDragEnd}
+              onEdit={handleEditLead}
+              onMarkLost={handleMarkLost}
+              onStartOnboarding={handleStartOnboarding}
+              userName={user?.displayName}
+              makeWebhookUrl={user?.makeWebhookUrl}
+            />
+
+            {/* Stand By Section (Al Final) */}
+            {standByLeads.length > 0 && (
+              <StandBySection leads={standByLeads} />
+            )}
+          </>
         )}
       </div>
       {isLeadModalOpen && <LeadModal open={isLeadModalOpen} onClose={() => setLeadModalOpen(false)} onSave={handleSaveLead} initialData={editingLead} onStartOnboarding={handleStartOnboarding} />}

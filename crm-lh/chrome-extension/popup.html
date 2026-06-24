@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp CRM Notificaciones</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 350px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+    }
+
+    .container {
+      padding: 16px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(71, 85, 105, 0.5);
+    }
+
+    .header-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .header-content h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .header-content p {
+      font-size: 12px;
+      color: #cbd5e1;
+      margin: 2px 0 0;
+    }
+
+    .status {
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(71, 85, 105, 0.3);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 12px;
+    }
+
+    .status.authenticated {
+      background: rgba(16, 185, 129, 0.1);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #a7f3d0;
+    }
+
+    .status.not-authenticated {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+
+    .status-badge.active {
+      background: rgba(16, 185, 129, 0.3);
+      color: #86efac;
+    }
+
+    .status-badge.inactive {
+      background: rgba(107, 114, 128, 0.3);
+      color: #d1d5db;
+    }
+
+    .pending-messages {
+      padding: 12px;
+      background: rgba(34, 197, 94, 0.05);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      text-align: center;
+      display: none;
+    }
+
+    .pending-messages.show {
+      display: block;
+    }
+
+    .pending-messages .count {
+      font-size: 24px;
+      font-weight: 700;
+      color: #22c55e;
+      margin: 8px 0;
+    }
+
+    .pending-messages p {
+      font-size: 12px;
+      color: #86efac;
+    }
+
+    .buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      flex: 1;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-secondary {
+      background: rgba(71, 85, 105, 0.3);
+      color: #cbd5e1;
+      border: 1px solid rgba(71, 85, 105, 0.5);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(71, 85, 105, 0.5);
+      border-color: rgba(71, 85, 105, 0.7);
+    }
+
+    .toggle-section {
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(71, 85, 105, 0.3);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toggle-section label {
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .toggle {
+      width: 36px;
+      height: 20px;
+      background: rgba(71, 85, 105, 0.5);
+      border-radius: 10px;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .toggle.active {
+      background: #10b981;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: all 0.3s;
+    }
+
+    .toggle.active::after {
+      left: 18px;
+    }
+
+    .footer {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(71, 85, 105, 0.3);
+      font-size: 11px;
+      color: #64748b;
+      text-align: center;
+    }
+
+    .footer a {
+      color: #10b981;
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-icon">⏰</div>
+      <div class="header-content">
+        <h1>WhatsApp Notificaciones</h1>
+        <p>Mensajes programados</p>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div id="status" class="status not-authenticated">
+      <span class="status-badge inactive">Desconectado</span>
+      <span>Inicia sesión en el CRM para activar</span>
+    </div>
+
+    <!-- Pending Messages -->
+    <div id="pendingMessages" class="pending-messages">
+      <p>📱 Tienes:</p>
+      <div class="count" id="pendingCount">0</div>
+      <p>mensaje(s) listo(s) para enviar</p>
+    </div>
+
+    <!-- Buttons -->
+    <div class="buttons">
+      <button class="btn-primary" id="openCrm">
+        <span>📲 Abrir CRM</span>
+      </button>
+      <button class="btn-secondary" id="checkNow">
+        <span class="spinner" style="display:none;"></span>
+        <span id="checkText">Verificar ahora</span>
+      </button>
+    </div>
+
+    <!-- Toggle Notifications -->
+    <div class="toggle-section" style="margin-top: 12px;">
+      <label for="toggleNotifications">Notificaciones activas</label>
+      <div id="toggleNotifications" class="toggle active"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      v1.0.0 • SwissMedical CRM
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

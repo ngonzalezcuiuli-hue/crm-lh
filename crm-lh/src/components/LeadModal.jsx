@@ -18,9 +18,17 @@ const initialFormState = {
   infoProceso: { idOnboarding: "", precarga: "Pendiente", mesProduccion: "", numeroPrecarga: "" }
 };
 
+function validateCelular(value) {
+  if (!value) return '';
+  const digits = value.replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15) return 'Número inválido';
+  return '';
+}
+
 export default function LeadModal({ open, onClose, onSave, initialData, onStartOnboarding }) {
   const [leadData, setLeadData] = useState(initialFormState);
   const [bulkText, setBulkText] = useState("");
+  const [celularError, setCelularError] = useState('');
   const isEditing = !!initialData;
 
   useEffect(() => {
@@ -51,6 +59,7 @@ export default function LeadModal({ open, onClose, onSave, initialData, onStartO
   
   const handleChange = (e) => {
     const { name, value, type } = e.target;
+    if (name === 'celular') setCelularError(validateCelular(value));
     setLeadData(prev => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
   };
 
@@ -122,7 +131,10 @@ export default function LeadModal({ open, onClose, onSave, initialData, onStartO
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <input name="nombre" value={leadData.nombre} onChange={handleChange} placeholder="Nombre Completo" className={inputStyles.replace('mt-1', '')} required />
                 <input name="dni" value={leadData.dni} onChange={handleChange} placeholder="DNI" className={inputStyles.replace('mt-1', '')} />
-                <input name="celular" value={leadData.celular} onChange={handleChange} placeholder="Celular" className={inputStyles.replace('mt-1', '')} />
+                <div>
+                  <input name="celular" value={leadData.celular} onChange={handleChange} placeholder="Celular" className={`${inputStyles.replace('mt-1', '')} ${celularError ? 'border-red-400' : ''}`} />
+                  {celularError && <p className="mt-0.5 text-xs text-red-500">{celularError}</p>}
+                </div>
                 <input name="mail" type="email" value={leadData.mail} onChange={handleChange} placeholder="Email" className={inputStyles.replace('mt-1', '')} />
                 <input name="zona.provincia" value={leadData.zona.provincia} onChange={(e) => handleNestedChange(e, 'zona')} placeholder="Provincia" className={inputStyles.replace('mt-1', '')} />
                 <input name="zona.localidad" value={leadData.zona.localidad} onChange={(e) => handleNestedChange(e, 'zona')} placeholder="Localidad" className={inputStyles.replace('mt-1', '')} />

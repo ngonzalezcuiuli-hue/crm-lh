@@ -1,16 +1,16 @@
 /**
- * Firebase Functions - Reciclaje "Espejo"
- * Dispara cuando un lead pasa a "Perdido" en users/{coreUid}/leads/{leadId}
- * Clona el lead a la cuenta del asesor de Reciclaje correspondiente (Core→Reciclaje).
- * 
- * Mapping dinámico (sin hardcodear UIDs):
- *  - Colección: routing/coreToRecycle/{coreUid} => { uid: <uidReciclaje>, waNumberId?: string, enabled?: boolean }
- *  - (Opcional) Pool: routing/pool/{docId} => { uid: <uidReciclaje>, waNumberId?: string, enabled?: boolean }
+ * Firebase Functions - Reciclaje "Espejo" + WhatsApp Automation
  */
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
+
+// Importar funciones de sendScheduledWhatsApp
+const {
+  procesScheduledWhatsApp,
+  completeScheduledWhatsApp
+} = require("./sendScheduledWhatsApp");
 
 // --- Configurables rápidos ---
 const COOLING_DAYS = 0; // si querés esperar X días, poné > 0
@@ -101,3 +101,7 @@ exports.cloneLostToRecycle = functions.firestore
 
     return null;
   });
+
+// Exportar funciones de WhatsApp
+exports.procesScheduledWhatsApp = procesScheduledWhatsApp;
+exports.completeScheduledWhatsApp = completeScheduledWhatsApp;

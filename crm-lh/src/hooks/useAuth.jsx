@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../services/firebase";
+import { connectToExtension, initializeExtensionBridge } from "../utils/extensionBridge";
 
 // Valor por defecto seguro (no rompe si alguien usa el hook fuera del provider)
 const defaultValue = { user: null, loading: true, db: null };
@@ -14,10 +15,25 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Inicializar bridge al montar (solo una vez)
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    initializeExtensionBridge();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u || null);
       setLoading(false);
+
+      // Conectar con extensión de Chrome si hay usuario
+      if (u) {
+        try {
+          const token = await u.getIdToken();
+          connectToExtension(u, token);
+        } catch (error) {
+          console.log('ℹ️ No se pudo conectar con extensión:', error.message);
+        }
+      }
     });
     return () => unsub();
   }, []);

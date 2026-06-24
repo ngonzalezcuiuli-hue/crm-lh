@@ -58,7 +58,7 @@ const StageDetail = ({ stage, counts }) => (
 );
 
 
-export default function Sidebar({ isOpen, onClose }) {
+export default function Sidebar({ isOpen, onClose, onOpenProfile }) {
   const { user } = useAuthContext() || {};
   const [allLeadsForTotals, setAllLeadsForTotals] = useState([]);
   const { leads: funnelLeads } = useLeads(user?.uid);
@@ -135,6 +135,7 @@ export default function Sidebar({ isOpen, onClose }) {
         <NavItem to="/perdidos">Perdidos</NavItem>
         <NavItem to="/completados">Completados</NavItem>
         <NavItem to="/informes">Informes</NavItem>
+        <NavItem to="/integraciones">Integraciones</NavItem>
       </nav>
 
       <div className="mt-6 pt-4 border-t space-y-5">
@@ -165,6 +166,18 @@ export default function Sidebar({ isOpen, onClose }) {
             <StatusPill label="Completados" count={otherStatusCounts.completado} color="bg-green-500" />
             <StatusPill label="Perdidos" count={otherStatusCounts.perdido} color="bg-red-500" />
           </div>
+        </div>
+
+        <div className="pt-3 border-t">
+          <button
+            onClick={onOpenProfile}
+            className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors text-left"
+          >
+            <div className="h-7 w-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              {user?.displayName?.charAt(0)?.toUpperCase() || '?'}
+            </div>
+            <span className="truncate font-medium">{user?.displayName || 'Mi Perfil'}</span>
+          </button>
         </div>
       </div>
     </>

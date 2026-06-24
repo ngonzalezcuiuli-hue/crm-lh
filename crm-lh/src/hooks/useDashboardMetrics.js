@@ -16,16 +16,21 @@ const capitalize = (s) => {
 export default function useDashboardMetrics(userId, selectedDate) {
   const [metrics, setMetrics] = useState({
     objetivoMensual: 0,
+    objetivoMensualAnterior: 0,
     totalCompletado: 0,
     nuevosLeadsMes: 0,
     tasaConversion: 0,
     valorPromedioVenta: 0,
     totalCompletadoAnterior: 0,
     nuevosLeadsMesAnterior: 0,
+    nuevosLeadsHistorico: [], // Array con últimos 3 meses
     ventasPorPlan: [],
     leadsPorOrigen: [],
-    forecastPorEtapa: [], 
+    forecastPorEtapa: [],
     onboardingForecast: 0,
+    totalCapitas: 0, // Suma total de integrantes/capitas vendidas
+    valorCapitaPromedio: 0, // Valor promedio por capita (total / capitas)
+    cantidadVentas: 0, // Cantidad de ventas/tickets cerrados
   });
   const [loading, setLoading] = useState(true);
 
@@ -38,17 +43,29 @@ export default function useDashboardMetrics(userId, selectedDate) {
     setLoading(true);
 
     // --- RANGOS DE FECHAS ---
+    // Helper para formatear YYYY-MM en hora local (evita el bug de timezone con toISOString)
+    const formatMonthStr = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
     const startOfMonth = Timestamp.fromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
     const endOfMonth = Timestamp.fromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59));
-    const currentMonthStr = selectedDate.toISOString().slice(0, 7);
+    const currentMonthStr = formatMonthStr(selectedDate);
 
-    const prevMonthDate = new Date(selectedDate);
-    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+    const prevMonthDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1);
     const startOfPrevMonth = Timestamp.fromDate(new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth(), 1));
     const endOfPrevMonth = Timestamp.fromDate(new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0, 23, 59, 59));
-    const prevMonthStr = prevMonthDate.toISOString().slice(0, 7);
+    const prevMonthStr = formatMonthStr(prevMonthDate);
     
     const leadsCollectionRef = collection(db, `users/${userId}/leads`);
+    const metaDocRef = doc(db, `users/${userId}/metas`, currentMonthStr);
+    const metaDocRefPrev = doc(db, `users/${userId}/metas`, prevMonthStr);
+
+    // --- Listener en tiempo real para el objetivo del mes actual ---
+    const unsubObjective = onSnapshot(metaDocRef, (snapshot) => {
+      const objetivo = snapshot.exists() && typeof snapshot.data().objetivo === 'number' ? snapshot.data().objetivo : 0;
+      setMetrics(prev => ({ ...prev, objetivoMensual: objetivo }));
+    }, (error) => {
+      console.error("Error cargando objetivo actual:", error);
+    });
 
     // --- Listener para leads del mes actual ---
     // CORREGIDO: Se cambió 'fechaDeCreacion' a 'createdAt' para que coincida con la base de datos.
@@ -57,20 +74,47 @@ export default function useDashboardMetrics(userId, selectedDate) {
         const leads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const totalNewLeads = leads.length;
 
+        // Calcular total y completados por origen
         const sources = {};
         leads.forEach(lead => {
             const origen = lead.origenDato || 'Desconocido';
-            sources[origen] = (sources[origen] || 0) + 1;
+            if (!sources[origen]) {
+                sources[origen] = { total: 0, completados: 0 };
+            }
+            sources[origen].total += 1;
+            if (lead.estado === 'Completado') {
+                sources[origen].completados += 1;
+            }
         });
-        const leadsPorOrigen = Object.keys(sources).map(name => ({ name, value: sources[name] }));
 
-        setMetrics(prev => ({ ...prev, nuevosLeadsMes: totalNewLeads, leadsPorOrigen }));
+        const leadsPorOrigen = Object.keys(sources)
+            .map(name => {
+                const total = sources[name].total;
+                const completados = sources[name].completados;
+                const tasaCierre = total > 0 ? (completados / total) * 100 : 0;
+                const porcentaje = totalNewLeads > 0 ? (total / totalNewLeads) * 100 : 0;
+                return {
+                    name,
+                    value: total,
+                    completados,
+                    tasaCierre,
+                    porcentaje
+                };
+            })
+            .sort((a, b) => b.value - a.value);
+
+        setMetrics(prev => ({
+            ...prev,
+            nuevosLeadsMes: totalNewLeads,
+            leadsPorOrigen
+        }));
     });
 
     // --- Listener para leads COMPLETADOS en el mes de producción actual ---
     const qCompleted = query(leadsCollectionRef, where('estado', '==', 'Completado'), where('infoProceso.mesProduccion', '==', currentMonthStr));
     const unsubCompleted = onSnapshot(qCompleted, (snapshot) => {
       let total = 0;
+      let totalCapitas = 0;
       const planSales = {};
       const numVentas = snapshot.size;
 
@@ -78,20 +122,28 @@ export default function useDashboardMetrics(userId, selectedDate) {
         const lead = { id: doc.id, ...doc.data() };
         const saleValue = getSaleValue(lead);
         total += saleValue;
-        
+
+        // Sumar capitas (integrantes) - puede ser número o string
+        const integrantes = lead.infoCotizacion?.cantidadIntegrantes;
+        totalCapitas += integrantes ? Number(integrantes) : 0;
+
         const planName = lead.infoCotizacion?.plan || 'Sin Plan';
         if (!planSales[planName]) planSales[planName] = { value: 0 };
         planSales[planName].value += saleValue;
       });
-      
+
       const ventasPorPlan = Object.keys(planSales).map(name => ({ name, value: planSales[name].value }));
       const valorPromedio = numVentas > 0 ? total / numVentas : 0;
+      const valorCapitaPromedio = totalCapitas > 0 ? total / totalCapitas : 0;
 
-      setMetrics(prev => ({ 
-          ...prev, 
-          totalCompletado: total, 
+      setMetrics(prev => ({
+          ...prev,
+          totalCompletado: total,
           ventasPorPlan,
           valorPromedioVenta: valorPromedio,
+          totalCapitas,
+          valorCapitaPromedio,
+          cantidadVentas: numVentas,
           tasaConversion: prev.nuevosLeadsMes > 0 ? (numVentas / prev.nuevosLeadsMes) * 100 : 0,
       }));
     });
@@ -128,17 +180,50 @@ export default function useDashboardMetrics(userId, selectedDate) {
       }));
     });
 
-    // --- Función asíncrona para cargar datos ---
+    // --- Función asíncrona para cargar datos de meses anteriores ---
     const loadInitialAndPastData = async () => {
       try {
-        const metaDocRef = doc(db, 'metas', currentMonthStr);
-        const metaDocSnap = await getDoc(metaDocRef);
-        const objetivo = metaDocSnap.exists() && typeof metaDocSnap.data().objetivo === 'number' ? metaDocSnap.data().objetivo : 0;
-        
-        // CORREGIDO: Se cambió 'fechaDeCreacion' a 'createdAt' aquí también.
+        const metaDocSnapPrev = await getDoc(metaDocRefPrev);
+        const objetivoPrev = metaDocSnapPrev.exists() && typeof metaDocSnapPrev.data().objetivo === 'number' ? metaDocSnapPrev.data().objetivo : 0;
+
+        // Cargar leads del mes anterior
         const qPrevLeads = query(leadsCollectionRef, where('createdAt', '>=', startOfPrevMonth), where('createdAt', '<=', endOfPrevMonth));
         const prevLeadsSnap = await getDocs(qPrevLeads);
         const nuevosLeadsMesAnterior = prevLeadsSnap.size;
+
+        // Calcular leads para hace 2 meses (usando construcción explícita en hora local)
+        const twoMonthsAgoDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 2, 1);
+        const startOfTwoMonthsAgo = Timestamp.fromDate(new Date(twoMonthsAgoDate.getFullYear(), twoMonthsAgoDate.getMonth(), 1));
+        const endOfTwoMonthsAgo = Timestamp.fromDate(new Date(twoMonthsAgoDate.getFullYear(), twoMonthsAgoDate.getMonth() + 1, 0, 23, 59, 59));
+        const twoMonthsAgoStr = formatMonthStr(twoMonthsAgoDate);
+
+        const qTwoMonthsAgoLeads = query(leadsCollectionRef, where('createdAt', '>=', startOfTwoMonthsAgo), where('createdAt', '<=', endOfTwoMonthsAgo));
+        const twoMonthsAgoLeadsSnap = await getDocs(qTwoMonthsAgoLeads);
+        const nuevosLeadsDosAtrás = twoMonthsAgoLeadsSnap.size;
+
+        // Calcular leads para hace 3 meses
+        const threeMonthsAgoDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 3, 1);
+        const startOfThreeMonthsAgo = Timestamp.fromDate(new Date(threeMonthsAgoDate.getFullYear(), threeMonthsAgoDate.getMonth(), 1));
+        const endOfThreeMonthsAgo = Timestamp.fromDate(new Date(threeMonthsAgoDate.getFullYear(), threeMonthsAgoDate.getMonth() + 1, 0, 23, 59, 59));
+        const threeMonthsAgoStr = formatMonthStr(threeMonthsAgoDate);
+
+        const qThreeMonthsAgoLeads = query(leadsCollectionRef, where('createdAt', '>=', startOfThreeMonthsAgo), where('createdAt', '<=', endOfThreeMonthsAgo));
+        const threeMonthsAgoLeadsSnap = await getDocs(qThreeMonthsAgoLeads);
+        const nuevosLeadsTresAtrás = threeMonthsAgoLeadsSnap.size;
+
+        // Crear array histórico con nombres de meses (solo los 3 meses anteriores)
+        // IMPORTANTE: usar mediodía hora local para evitar el bug de timezone
+        const getMonthName = (dateStr) => {
+          const [year, month] = dateStr.split('-').map(Number);
+          const date = new Date(year, month - 1, 15); // día 15 al mediodía evita problemas de zona horaria
+          return date.toLocaleString('es-ES', { month: 'short', year: '2-digit' });
+        };
+
+        const nuevosLeadsHistorico = [
+          { mes: getMonthName(prevMonthStr), value: nuevosLeadsMesAnterior },
+          { mes: getMonthName(twoMonthsAgoStr), value: nuevosLeadsDosAtrás },
+          { mes: getMonthName(threeMonthsAgoStr), value: nuevosLeadsTresAtrás }
+        ];
 
         const qPrevCompleted = query(leadsCollectionRef, where('estado', '==', 'Completado'), where('infoProceso.mesProduccion', '==', prevMonthStr));
         const prevCompletedSnap = await getDocs(qPrevCompleted);
@@ -146,11 +231,12 @@ export default function useDashboardMetrics(userId, selectedDate) {
         prevCompletedSnap.forEach(doc => {
             totalCompletadoAnterior += getSaleValue(doc.data());
         });
-        
+
         setMetrics(prev => ({
             ...prev,
-            objetivoMensual: objetivo,
+            objetivoMensualAnterior: objetivoPrev,
             nuevosLeadsMesAnterior,
+            nuevosLeadsHistorico,
             totalCompletadoAnterior
         }));
 
@@ -165,6 +251,7 @@ export default function useDashboardMetrics(userId, selectedDate) {
 
     // Cleanup
     return () => {
+      unsubObjective();
       unsubAllLeads();
       unsubCompleted();
       unsubFunnel();

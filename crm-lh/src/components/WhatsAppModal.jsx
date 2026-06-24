@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { recordWhatsAppSent } from '../services/leadsService';
+import useAuth from '../hooks/useAuth.jsx';
 
 const WhatsAppIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -37,7 +40,9 @@ function getDefaultMessage(lead, userName, variant = 'primary') {
 }
 
 export default function WhatsAppModal({ open, onClose, lead, userName, variant = 'primary' }) {
+    const { user } = useAuth() || {};
     const [message, setMessage] = useState('');
+    const [isSending, setIsSending] = useState(false);
 
     // Generar mensaje predefinido cuando se abre el modal
     useEffect(() => {
@@ -50,27 +55,40 @@ export default function WhatsAppModal({ open, onClose, lead, userName, variant =
 
     const phoneNumber = (lead.celular || '').replace(/\D/g, '');
 
-    const handleSend = () => {
-        const whatsappUrl = message.trim()
-            ? `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodeURIComponent(message.trim())}`
-            : `https://api.whatsapp.com/send?phone=${phoneNumber}`;
-        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-        onClose();
+    const handleSend = async () => {
+        setIsSending(true);
+        try {
+            // Abrir WhatsApp
+            const whatsappUrl = message.trim()
+                ? `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodeURIComponent(message.trim())}`
+                : `https://api.whatsapp.com/send?phone=${phoneNumber}`;
+            window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+
+            // Registrar el envío en Firebase
+            if (user?.uid) {
+                await recordWhatsAppSent({ userId: user.uid, leadId: lead.id, variant });
+            }
+        } catch (error) {
+            console.error('Error registrando WhatsApp:', error);
+        } finally {
+            setIsSending(false);
+            onClose();
+        }
     };
 
     const variantLabel = variant === 'primary' ? 'Mensaje Principal' : 'Mensaje Alternativo';
 
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
             onClick={onClose}
         >
             <div
-                className="w-full max-w-md mx-4 bg-slate-800 rounded-2xl shadow-2xl border border-slate-600/50 overflow-hidden animate-fade-in"
+                className="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl border border-slate-600/50 overflow-hidden animate-fade-in flex flex-col max-h-[calc(100vh-2rem)]"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-green-600 to-emerald-600">
+                <div className="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-green-600 to-emerald-600 shrink-0">
                     <WhatsAppIcon />
                     <div className="flex-1">
                         <h3 className="text-white font-bold text-lg">Enviar WhatsApp</h3>
@@ -85,7 +103,7 @@ export default function WhatsAppModal({ open, onClose, lead, userName, variant =
                 </div>
 
                 {/* Lead info */}
-                <div className="px-5 py-3 bg-slate-700/50 border-b border-slate-600/30">
+                <div className="px-5 py-3 bg-slate-700/50 border-b border-slate-600/30 shrink-0">
                     <p className="text-sm text-slate-300">
                         <span className="text-slate-400">Para:</span>{' '}
                         <span className="font-semibold text-white">{lead.nombre}</span>
@@ -101,23 +119,23 @@ export default function WhatsAppModal({ open, onClose, lead, userName, variant =
                 </div>
 
                 {/* Message textarea */}
-                <div className="px-5 py-4 space-y-2">
-                    <label className="text-sm font-semibold text-slate-300">
+                <div className="px-5 py-4 space-y-2 flex-1 overflow-y-auto min-h-0 flex flex-col">
+                    <label className="text-sm font-semibold text-slate-300 shrink-0">
                         Mensaje
                     </label>
                     <textarea
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         placeholder="Escribe tu mensaje aquí..."
-                        className="w-full min-h-[160px] p-3 bg-slate-900/60 border border-slate-600/50 rounded-xl text-sm text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 transition-all"
+                        className="w-full flex-1 min-h-[120px] p-3 bg-slate-900/60 border border-slate-600/50 rounded-xl text-sm text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 transition-all"
                     />
-                    <p className="text-[10px] text-slate-500">
+                    <p className="text-[10px] text-slate-500 shrink-0">
                         Podés editar el mensaje antes de enviarlo. Se abrirá en WhatsApp Web/App.
                     </p>
                 </div>
 
                 {/* Footer buttons */}
-                <div className="flex items-center justify-end gap-3 px-5 py-4 bg-slate-800/80 border-t border-slate-700/50">
+                <div className="flex items-center justify-end gap-3 px-5 py-4 bg-slate-800/80 border-t border-slate-700/50 shrink-0">
                     <button
                         onClick={onClose}
                         className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-700"
@@ -126,14 +144,15 @@ export default function WhatsAppModal({ open, onClose, lead, userName, variant =
                     </button>
                     <button
                         onClick={handleSend}
-                        disabled={!phoneNumber}
+                        disabled={!phoneNumber || isSending}
                         className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 rounded-xl shadow-lg shadow-green-600/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <WhatsAppIcon />
-                        Enviar
+                        {isSending ? '✓ Registrando...' : 'Enviar'}
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

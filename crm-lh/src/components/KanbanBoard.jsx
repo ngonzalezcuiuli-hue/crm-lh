@@ -44,14 +44,14 @@ export default function KanbanBoard({
   };
 
   return (
-    <div className="p-4 sm:p-6 bg-gray-50 min-h-screen">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-gray-800">
+    <div className="w-full">
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white uppercase tracking-wider">
           Funnel de Ventas
         </h1>
         {userName && (
-          <div className="text-sm text-gray-500">
-            Usuario: <span className="font-medium">{userName}</span>
+          <div className="text-sm text-slate-400 bg-slate-800/50 backdrop-blur-sm rounded-lg px-4 py-2 border border-slate-700/50">
+            Usuario: <span className="font-medium text-slate-200">{userName}</span>
           </div>
         )}
       </div>

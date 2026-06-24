@@ -178,3 +178,90 @@ export async function reactivateLead({ userId, leadId }) {
     lastUpdatedAt: serverTimestamp()
   });
 }
+
+/**
+ * Registra que un mensaje de WhatsApp fue enviado a un lead.
+ * @param {string} userId - ID del usuario
+ * @param {string} leadId - ID del lead
+ * @param {string} variant - Tipo de mensaje ('primary', 'secondary', 'recontacto')
+ * @returns {Promise<void>}
+ */
+export async function recordWhatsAppSent({ userId, leadId, variant = 'primary' }) {
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+
+  try {
+    const leadSnap = await getDoc(ref);
+    if (!leadSnap.exists()) throw new Error("El lead no existe.");
+
+    const leadData = leadSnap.data();
+    const whatsappEnviados = leadData.whatsappEnviados || {};
+
+    // Registrar el envío con timestamp
+    whatsappEnviados[variant] = {
+      timestamp: serverTimestamp(),
+      enviado: true
+    };
+
+    await updateDoc(ref, {
+      whatsappEnviados,
+      lastUpdatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error registrando WhatsApp enviado:", error);
+    throw error;
+  }
+}
+
+/**
+ * Establece un recordatorio de contacto para un lead.
+ * @param {string} userId - ID del usuario
+ * @param {string} leadId - ID del lead
+ * @param {Date} fechaProximoContacto - Fecha del próximo contacto
+ * @param {string} nota - Nota interna opcional
+ * @returns {Promise<void>}
+ */
+export async function setRecordatorio({ userId, leadId, fechaProximoContacto, nota = '' }) {
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+
+  try {
+    const leadSnap = await getDoc(ref);
+    if (!leadSnap.exists()) throw new Error("El lead no existe.");
+
+    await updateDoc(ref, {
+      recordatorio: {
+        enabled: true,
+        fechaProximoContacto: fechaProximoContacto,
+        nota: nota.trim(),
+        estado: 'activo',
+        createdAt: serverTimestamp()
+      },
+      lastUpdatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error estableciendo recordatorio:", error);
+    throw error;
+  }
+}
+
+/**
+ * Limpia/elimina el recordatorio de un lead.
+ * @param {string} userId - ID del usuario
+ * @param {string} leadId - ID del lead
+ * @returns {Promise<void>}
+ */
+export async function clearRecordatorio({ userId, leadId }) {
+  const ref = doc(db, `users/${userId}/leads/${leadId}`);
+
+  try {
+    const leadSnap = await getDoc(ref);
+    if (!leadSnap.exists()) throw new Error("El lead no existe.");
+
+    await updateDoc(ref, {
+      recordatorio: null,
+      lastUpdatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error limpiando recordatorio:", error);
+    throw error;
+  }
+}

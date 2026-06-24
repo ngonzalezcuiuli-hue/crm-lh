@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
-import { updateLead, markLeadLost } from '../services/leadsService';
+import { updateLead, markLeadLost, setRecordatorio, clearRecordatorio } from '../services/leadsService';
 import useAuth from '../hooks/useAuth.jsx';   // 👈 igual que en useLostLeads
 import WhatsAppModal from './WhatsAppModal';
+import RecordatorioModal from './RecordatorioModal';
+import { Calendar } from 'lucide-react';
 
 // --- ÍCONOS ---
 const WhatsAppIcon = () => (
@@ -101,6 +103,7 @@ export default function LeadCard({
   const [contactStatus, setContactStatus] = useState('idle');
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [whatsAppVariant, setWhatsAppVariant] = useState('primary');
+  const [isRecordatorioOpen, setIsRecordatorioOpen] = useState(false);
 
   // --- MENÚ "PERDIDO" ---
   const [isLostMenuOpen, setIsLostMenuOpen] = useState(false);
@@ -129,6 +132,21 @@ export default function LeadCard({
   const formatCurrency = (value) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
   const infoCotizacion = lead.infoCotizacion || {};
+
+  // Verificar si los WhatsApp fueron enviados
+  const whatsappEnviados = lead.whatsappEnviados || {};
+  const primarySent = whatsappEnviados.primary?.enviado === true;
+  const secondarySent = whatsappEnviados.secondary?.enviado === true;
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return date.toLocaleString('es-AR');
+    } catch (e) {
+      return 'Enviado';
+    }
+  };
 
   const toggleLostMenu = (e) => {
     e.stopPropagation();
@@ -225,33 +243,99 @@ export default function LeadCard({
     }
   };
 
+  const handleSaveRecordatorio = async (data) => {
+    if (!userId) {
+      alert('Error: No se pudo obtener el usuario');
+      return;
+    }
+
+    try {
+      if (data === null) {
+        await clearRecordatorio({ userId, leadId: lead.id });
+      } else {
+        await setRecordatorio({
+          userId,
+          leadId: lead.id,
+          fechaProximoContacto: data.fechaProximoContacto,
+          nota: data.nota
+        });
+      }
+      setIsRecordatorioOpen(false);
+    } catch (error) {
+      console.error('Error guardando recordatorio:', error);
+      alert('Error al guardar el recordatorio');
+    }
+  };
+
   return (
     <Draggable draggableId={lead.id} index={index}>
-      {(provided) => (
+      {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          className={`p-3 mb-3 rounded-lg shadow-md select-none ${stageTimeInfo.cardBgClass}`}
+          style={{
+            ...provided.draggableProps.style,
+            cursor: snapshot.isDragging ? 'grabbing' : 'grab',
+          }}
+          className={`p-4 mb-3 rounded-xl select-none bg-gradient-to-br ${
+            stageTimeInfo.cardBgClass.includes('red-700')
+              ? 'from-red-900 via-red-800 to-red-900'
+              : stageTimeInfo.cardBgClass.includes('yellow-600')
+              ? 'from-yellow-900 via-yellow-800 to-yellow-900'
+              : 'from-green-900 via-green-800 to-green-900'
+          } ${
+            snapshot.isDragging
+              ? 'shadow-2xl shadow-emerald-500/40 border-2 border-emerald-400/70 ring-2 ring-emerald-400/30'
+              : 'shadow-lg border border-slate-700/50 hover:shadow-xl hover:border-slate-500/60 transition-shadow duration-200'
+          }`}
         >
           {/* HEADER (Siempre visible) */}
           <div
             className="flex justify-between items-center cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            <div>
-              <div className="font-bold text-white">{lead.nombre}</div>
-              <div className="flex items-center gap-2 text-xs text-gray-300 mt-1">
+            <div className="flex-1">
+              <div className="font-bold text-white text-lg tracking-wide">{lead.nombre}</div>
+
+              {/* Badges de WhatsApp */}
+              {(primarySent || secondarySent || lead.whatsappProximo) && (
+                <div className="flex items-center gap-2 text-xs mt-2 flex-wrap">
+                  {primarySent && (
+                    <span className="px-2 py-1 rounded-full bg-green-600/40 text-green-200 border border-green-500/30 font-medium">
+                      ✓ Primer Contacto
+                    </span>
+                  )}
+                  {secondarySent && (
+                    <span className="px-2 py-1 rounded-full bg-green-600/40 text-green-200 border border-green-500/30 font-medium">
+                      ✓ Segundo Contacto
+                    </span>
+                  )}
+                  {lead.whatsappProximo?.programadoPara && (
+                    <span className="px-2 py-1 rounded-full bg-blue-600/40 text-blue-200 border border-blue-500/30 font-medium">
+                      ⏱️ Programado
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 text-xs text-slate-300 mt-2">
                 <span
-                  className={`px-2 py-0.5 rounded-full font-semibold text-xs ${stageTimeInfo.badgeColorClass}`}
+                  className={`px-2.5 py-1 rounded-full font-semibold text-xs uppercase tracking-wider ${
+                    stageTimeInfo.cardBgClass.includes('red-700')
+                      ? 'bg-red-600/40 text-red-200 border border-red-500/30'
+                      : stageTimeInfo.cardBgClass.includes('yellow-600')
+                      ? 'bg-yellow-600/40 text-yellow-100 border border-yellow-500/30'
+                      : 'bg-green-600/40 text-green-200 border border-green-500/30'
+                  }`}
                 >
                   {stageTimeInfo.text}
                 </span>
-                <span>•</span>
-                <span>{lead.numeroTramite || 'Sin Trámite'}</span>
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-400 font-medium">{lead.numeroTramite || 'Sin Trámite'}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 ml-2">
               {lead.etapa === 'Seguimiento' && interestLevel > 0 && (
                 <span
                   className={`${flameColorClasses[interestLevel]} ${flameSizeClassesCollapsed[interestLevel]}`}
@@ -267,40 +351,72 @@ export default function LeadCard({
 
           {/* CONTENIDO EXPANDIDO */}
           {isExpanded && (
-            <div className="mt-4 pt-3 border-t border-white/20 text-gray-200">
+            <div className="mt-4 pt-4 border-t border-white/10 text-slate-200">
+              {/* RECORDATORIO SECTION */}
+              {lead.recordatorio?.enabled && (
+                <div className="mb-4 bg-gradient-to-br from-amber-900/40 via-amber-800/30 to-orange-900/40 backdrop-blur-sm rounded-lg p-3 border border-amber-700/50">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="text-xs text-amber-400 uppercase tracking-wider font-semibold mb-2 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> Próximo Contacto
+                      </p>
+                      <p className="text-sm font-bold text-amber-200">
+                        {new Date(lead.recordatorio.fechaProximoContacto.toDate?.() || lead.recordatorio.fechaProximoContacto).toLocaleDateString('es-AR')}
+                      </p>
+                      {lead.recordatorio.nota && (
+                        <p className="text-xs text-slate-300 mt-2">
+                          <span className="text-slate-400">Nota:</span> {lead.recordatorio.nota}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsRecordatorioOpen(true);
+                      }}
+                      className="px-2 py-1 text-xs font-medium text-amber-200 hover:text-amber-100 transition"
+                    >
+                      ✏️ Editar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {['Seguimiento', 'Cierre'].includes(lead.etapa) ? (
-                <div className="flex justify-between items-start text-sm mb-4">
-                  <div className="space-y-1">
+                <div className="flex justify-between items-start text-sm mb-4 bg-slate-800/40 backdrop-blur-sm rounded-lg p-3 border border-slate-700/50">
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Detalles Cotización</p>
                     <p>
-                      <strong>Plan:</strong> {infoCotizacion.plan || 'N/A'}
+                      <span className="text-slate-400">Plan:</span> <span className="text-white font-medium">{infoCotizacion.plan || 'N/A'}</span>
                     </p>
                     <p>
-                      <strong>Valor Final:</strong> {formatCurrency(infoCotizacion.valorFinalSocio)}
+                      <span className="text-slate-400">Valor Final:</span> <span className="text-emerald-300 font-medium">{formatCurrency(infoCotizacion.valorFinalSocio)}</span>
                     </p>
                     <p>
-                      <strong>Obs:</strong> {infoCotizacion.observaciones || 'N/A'}
+                      <span className="text-slate-400">Obs:</span> <span className="text-slate-300">{infoCotizacion.observaciones || 'N/A'}</span>
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-gray-400 font-semibold">Forecast</p>
-                    <p className="font-bold text-lg text-green-400">
+                    <p className="text-slate-400 font-semibold text-xs uppercase tracking-wider">Forecast</p>
+                    <p className="font-bold text-lg bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-transparent">
                       {formatCurrency(infoCotizacion.valorForecast)}
                     </p>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm space-y-1 mb-4">
+                <div className="text-sm space-y-2 mb-4 bg-slate-800/40 backdrop-blur-sm rounded-lg p-3 border border-slate-700/50">
+                  <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2">Información de Contacto</p>
                   <p>
-                    <strong>Email:</strong> {lead.mail || 'N/A'}
+                    <span className="text-slate-400">Email:</span> <span className="text-slate-200">{lead.mail || 'N/A'}</span>
                   </p>
                   <p>
-                    <strong>Celular:</strong> {lead.celular || 'N/A'}
+                    <span className="text-slate-400">Celular:</span> <span className="text-slate-200">{lead.celular || 'N/A'}</span>
                   </p>
                   <p>
-                    <strong>DNI:</strong> {lead.dni || 'N/A'}
+                    <span className="text-slate-400">DNI:</span> <span className="text-slate-200">{lead.dni || 'N/A'}</span>
                   </p>
                   <p>
-                    <strong>Plan:</strong> {infoCotizacion.plan || 'N/A'}
+                    <span className="text-slate-400">Plan:</span> <span className="text-slate-200">{infoCotizacion.plan || 'N/A'}</span>
                   </p>
                 </div>
               )}
@@ -308,15 +424,15 @@ export default function LeadCard({
               {/* --- ZONA DEL MENÚ "PERDIDO" --- */}
               {isLostMenuOpen ? (
                 <div
-                  className="bg-slate-800 p-3 rounded-md border border-slate-600 shadow-lg animation-fade-in"
+                  className="bg-slate-800/60 backdrop-blur-sm p-3 rounded-lg border border-slate-700/50 shadow-lg animate-fade-in"
                   onMouseDown={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
                 >
-                  <p className="text-xs font-bold text-white mb-2">Motivo de pérdida:</p>
+                  <p className="text-xs font-bold text-white mb-2 uppercase tracking-wider">Motivo de pérdida:</p>
                   <select
                     value={lostReason}
                     onChange={(e) => setLostReason(e.target.value)}
-                    className="w-full text-xs text-gray-900 p-2 rounded mb-2 focus:outline-none"
+                    className="w-full text-xs text-slate-900 p-2.5 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-red-500/50"
                     onMouseDown={(e) => e.stopPropagation()}
                   >
                     <option value="">-- Seleccionar --</option>
@@ -330,7 +446,7 @@ export default function LeadCard({
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={toggleLostMenu}
-                      className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded"
+                      className="px-3 py-1.5 bg-slate-700/50 hover:bg-slate-600/50 text-slate-200 text-xs rounded-lg font-medium border border-slate-600/50 transition"
                       disabled={isSavingLost}
                       onMouseDown={(e) => e.stopPropagation()}
                     >
@@ -338,7 +454,7 @@ export default function LeadCard({
                     </button>
                     <button
                       onClick={handleSaveLost}
-                      className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded font-bold"
+                      className="px-3 py-1.5 bg-red-600/80 hover:bg-red-700 text-white text-xs rounded-lg font-bold transition border border-red-500/50"
                       disabled={isSavingLost}
                       onMouseDown={(e) => e.stopPropagation()}
                     >
@@ -347,12 +463,28 @@ export default function LeadCard({
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 flex justify-between items-center flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="mt-4 flex flex-col gap-3">
+                  {/* Botón Recordatorio */}
+                  {['Seguimiento', 'Cierre'].includes(lead.etapa) && (
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsRecordatorioOpen(true);
+                      }}
+                      className="text-xs font-semibold text-white bg-amber-600/80 hover:bg-amber-700 px-3 py-1.5 rounded-lg transition border border-amber-500/50 w-full"
+                    >
+                      📅 {lead.recordatorio?.enabled ? 'Editar Recordatorio' : 'Agendar Contacto'}
+                    </button>
+                  )}
+
+                  {/* Primera fila: Acciones principales */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     {lead.etapa === 'Seguimiento' && (
                       <button
                         onClick={handleInterestClick}
-                        className="px-1 py-1"
+                        className="px-2 py-1.5 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg border border-slate-700/50 transition"
                         title="Nivel de interés"
                       >
                         <span
@@ -367,28 +499,52 @@ export default function LeadCard({
                       onMouseDown={(e) => e.stopPropagation()}
                       onTouchStart={(e) => e.stopPropagation()}
                       onClick={toggleLostMenu}
-                      className="text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-2 py-1 rounded-md shadow-sm"
+                      className="text-xs font-semibold text-white bg-red-600/80 hover:bg-red-700 px-3 py-1.5 rounded-lg transition border border-red-500/50"
                     >
                       Perdido
                     </button>
 
                     {lead.celular && (
                       <>
-                        <button
-                          onClick={(e) => openWhatsApp(e, 'primary')}
-                          className="flex items-center text-xs font-semibold text-white bg-green-600 hover:bg-green-700 px-2 py-1 rounded-md shadow-sm"
-                        >
-                          <WhatsAppIcon />
-                          WhatsApp
-                        </button>
-                        {['Primer Contacto', 'Segundo Contacto'].includes(lead.etapa) && (
+                        <div className="relative group">
                           <button
-                            onClick={(e) => openWhatsApp(e, 'secondary')}
-                            className="flex items-center text-xs font-semibold text-white bg-green-600 hover:bg-green-700 px-2 py-1 rounded-md shadow-sm"
+                            onClick={(e) => openWhatsApp(e, 'primary')}
+                            className={`flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg transition border ${
+                              primarySent
+                                ? 'bg-emerald-700/60 hover:bg-emerald-600 text-emerald-50 border-emerald-500/50'
+                                : 'bg-green-600/80 hover:bg-green-700 text-white border-green-500/50'
+                            }`}
+                            title={primarySent ? `Último envío: ${formatTimestamp(whatsappEnviados.primary?.timestamp)}` : ''}
                           >
                             <WhatsAppIcon />
-                            Mensaje 2
+                            {primarySent ? '🔄 Reenviar' : 'WhatsApp'}
                           </button>
+                          {primarySent && (
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-800 text-slate-200 text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-slate-700/50">
+                              Último envío: {formatTimestamp(whatsappEnviados.primary?.timestamp)}
+                            </div>
+                          )}
+                        </div>
+                        {['Primer Contacto', 'Segundo Contacto'].includes(lead.etapa) && (
+                          <div className="relative group">
+                            <button
+                              onClick={(e) => openWhatsApp(e, 'secondary')}
+                              className={`flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg transition border ${
+                                secondarySent
+                                  ? 'bg-emerald-700/60 hover:bg-emerald-600 text-emerald-50 border-emerald-500/50'
+                                  : 'bg-green-600/80 hover:bg-green-700 text-white border-green-500/50'
+                              }`}
+                              title={secondarySent ? `Último envío: ${formatTimestamp(whatsappEnviados.secondary?.timestamp)}` : ''}
+                            >
+                              <WhatsAppIcon />
+                              {secondarySent ? '🔄 Reenviar Msg 2' : 'Mensaje 2'}
+                            </button>
+                            {secondarySent && (
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-800 text-slate-200 text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-slate-700/50">
+                                Último envío: {formatTimestamp(whatsappEnviados.secondary?.timestamp)}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </>
                     )}
@@ -398,22 +554,24 @@ export default function LeadCard({
                           e.stopPropagation();
                           onStartOnboarding(lead);
                         }}
-                        className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded-md shadow-sm"
+                        className="text-xs font-semibold text-white bg-blue-600/80 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition border border-blue-500/50"
                       >
                         Iniciar Alta
                       </button>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {/* Segunda fila: Google Contacts y Editar */}
+                  <div className="flex items-center gap-2 justify-end">
                     {['Cotización', 'Seguimiento', 'Cierre'].includes(lead.etapa) && (
                       <button
                         onClick={handleAddToGoogleContacts}
                         disabled={contactStatus !== 'idle'}
-                        className={`p-2 rounded-md shadow-sm ${contactStatus === 'added'
-                          ? 'bg-gray-500'
-                          : 'bg-gray-700 hover:bg-gray-600'
+                        className={`p-2 rounded-lg border border-slate-700/50 transition ${contactStatus === 'added'
+                          ? 'bg-slate-700/50 text-slate-400'
+                          : 'bg-slate-800/50 hover:bg-slate-700/50 text-slate-300'
                           }`}
+                        title="Agregar a Google Contactos"
                       >
                         <GoogleContactsIcon />
                       </button>
@@ -423,7 +581,7 @@ export default function LeadCard({
                         e.stopPropagation();
                         onEdit(lead);
                       }}
-                      className="text-sm font-semibold text-white bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded-md shadow-sm"
+                      className="text-sm font-semibold text-white bg-slate-700/60 hover:bg-slate-600/60 px-3 py-1.5 rounded-lg transition border border-slate-700/50"
                     >
                       Editar
                     </button>
@@ -440,6 +598,14 @@ export default function LeadCard({
             lead={lead}
             userName={userName}
             variant={whatsAppVariant}
+          />
+
+          {/* Modal de Recordatorio */}
+          <RecordatorioModal
+            open={isRecordatorioOpen}
+            onClose={() => setIsRecordatorioOpen(false)}
+            onSave={handleSaveRecordatorio}
+            initialData={lead}
           />
         </div>
       )}
